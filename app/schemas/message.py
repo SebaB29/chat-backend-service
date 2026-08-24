@@ -1,26 +1,28 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from datetime import datetime
 
 class MessageResponse(BaseModel):
     id: int
-    channelId: int = Field(..., alias="channel_id")
-    authorId: int = Field(..., alias="author_id")
+    channel_id: int = Field(..., serialization_alias="channelId")
+    author_id: int = Field(..., serialization_alias="authorId")
     content: str = Field(..., min_length=1, max_length=2000)
-    createdAt: datetime = Field(..., alias="created_at")
-    editedAt: Optional[datetime] = Field(None, alias="edited_at")
+    created_at: datetime = Field(..., serialization_alias="createdAt")
+    edited_at: Optional[datetime] = Field(None, serialization_alias="editedAt")
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )
 
 class MessageListResponse(BaseModel):
     data: list[MessageResponse]
 
 class SendOrEditMessageEvent(BaseModel):
     id: Optional[int] = None
-    authorId: int = Field(..., alias="author_id")
+    author_id: int = Field(..., alias="authorId")
     content: str = Field(..., min_length=1, max_length=2000)
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(
+        populate_by_name=True
+    )
