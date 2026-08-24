@@ -1,15 +1,21 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.config import settings
 from app.database import Base, engine
 from app.controllers import channel_controller
 from app.exceptions.custom_exceptions import HTTPExceptionRFC7807, rfc7807_exception_handler
 
-# Crear tablas en la base de datos si no existen
-Base.metadata.create_all(bind=engine)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # No intenta conectarse a Postgres si estamos corriendo en modo testing
+    if settings.ENVIRONMENT != "testing":
+        Base.metadata.create_all(bind=engine)
+    yield
 
 app = FastAPI(
     title="Discordia Chat Service API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Registrar manejador de errores RFC 7807

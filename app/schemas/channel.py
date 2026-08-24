@@ -1,17 +1,18 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field
 
 class CreateChannelRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=50)
+    name: str
 
 class ChannelResponse(BaseModel):
     id: int
     name: str
-    createdAt: datetime = Field(..., alias="created_at")
+    created_at: datetime = Field(..., serialization_alias="createdAt")
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True
+    )
 
 class ChannelListResponse(BaseModel):
     data: list[ChannelResponse]
