@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.config import settings
 from app.database import Base, engine
-from app.controllers import channel_controller, message_controller
+from app.controllers import channel_controller, message_controller, websocket_controller
 from app.exceptions.custom_exceptions import HTTPExceptionRFC7807, rfc7807_exception_handler
 
 @asynccontextmanager
@@ -12,17 +12,16 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Discordia Chat Service API",
+    title="Chat Service API",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Registrar manejador de errores RFC 7807
 app.add_exception_handler(HTTPExceptionRFC7807, rfc7807_exception_handler)
 
-# Incluir Routers
 app.include_router(channel_controller.router)
 app.include_router(message_controller.router)
+app.include_router(websocket_controller.router)
 
 if __name__ == "__main__":
     import uvicorn
