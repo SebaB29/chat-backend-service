@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Client</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+
+        body {
+            display: flex;
+            height: 100vh;
+            background: #1e1e2e;
+            color: #cdd6f4;
+        }
+
+        #sidebar {
+            width: 260px;
+            background: #181825;
+            padding: 15px;
+            border-right: 1px solid #313244;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            color: #cba6f7;
+        }
+
+        .channel-item {
+            padding: 8px 12px;
+            margin-bottom: 5px;
+            background: #313244;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .channel-item:hover,
+        .channel-item.active {
+            background: #45475a;
+            font-weight: bold;
+        }
+
+        #messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message-card {
+            background: #313244;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .message-meta {
+            font-size: 0.8rem;
+            color: #a6adc8;
+            margin-bottom: 4px;
+        }
+
+        #input-area {
+            padding: 15px;
+            background: #181825;
+            display: flex;
+            gap: 10px;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            border-radius: 4px;
+            border: none;
+            outline: none;
+        }
+
+        input {
+            flex: 1;
+            background: #313244;
+            color: #fff;
+        }
+
+        button {
+            background: #a6e3a1;
+            color: #11111b;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #94e2d5;
+        }
+
+        #create-channel-box {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="sidebar">
+        <h2>Canales</h2>
+        <div id="create-channel-box">
+            <input type="text" id="new-channel-name" placeholder="Nuevo canal...">
+            <button onclick="createChannel()">+</button>
+        </div>
+        <div id="channels-list"></div>
+    </div>
+
+    <div id="main">
+        <div id="messages-container"></div>
+        <div id="input-area">
+            <input type="number" id="author-id-input" placeholder="ID Autor" style="width: 100px;" value="1">
+            <input type="text" id="message-input" placeholder="Escribe un mensaje..."
+                onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Enviar</button>
+        </div>
+    </div>
+
+    <script>
+        let activeChannelId = null;
+        let ws = null;
+
+        async function loadChannels() {
+            const res = await fetch('/channels');
+            const data = await res.json();
+            const list = document.getElementById('channels-list');
+            list.innerHTML = '';
+            data.data.forEach(ch => {
+                const div = document.createElement('div');
+                div.className = `channel-item ${ch.id === activeChannelId ? 'active' : ''}`;
+                div.innerText = `# ${ch.name}`;
+                div.onclick = () => selectChannel(ch.id);
+                list.appendChild(div);
+            });
+        }
+
+        async function createChannel() {
+            const nameInput = document.getElementById('new-channel-name');
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            const res = await fetch('/channels', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+
+            if (res.ok) {
+                nameInput.value = '';
+                await loadChannels();
+            } else {
+                const err = await res.json();
+                alert(err.detail || 'Error al crear canal');
+            }
+        }
+
+        async function selectChannel(channelId) {
+            activeChannelId = channelId;
+            await loadChannels();
+            await loadMessageHistory(channelId);
+            connectWebSocket(channelId);
+        }
+
+        async function loadMessageHistory(channelId) {
+            const res = await fetch(`/channels/${channelId}/messages`);
+            const data = await res.json();
+            const container = document.getElementById('messages-container');
+            container.innerHTML = '';
+            data.data.forEach(renderMessage);
+            scrollToBottom();
+        }
+
+        function connectWebSocket(channelId) {
+            if (ws) ws.close();
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/channels/${channelId}`);
+
+            ws.onmessage = (event) => {
+                const payload = JSON.parse(event.data);
+                if (payload.event === 'MESSAGE_CREATED') {
+                    renderMessage(payload.data);
+                    scrollToBottom();
+                } else if (payload.event === 'MESSAGE_UPDATED') {
+                    const existing = document.getElementById(`msg-${payload.data.id}`);
+                    if (existing) {
+                        existing.querySelector('.msg-content').innerText = payload.data.content + ' (editado)';
+                    }
+                }
+            };
+        }
+
+        function renderMessage(msg) {
+            const container = document.getElementById('messages-container');
+            let card = document.getElementById(`msg-${msg.id}`);
+
+            if (!card) {
+                card = document.createElement('div');
+                card.id = `msg-${msg.id}`;
+                card.className = 'message-card';
+                container.appendChild(card);
+            }
+
+            const date = new Date(msg.createdAt).toLocaleTimeString();
+            card.innerHTML = `
+            <div class="message-meta">Usuario ${msg.authorId} • ${date}</div>
+            <div class="msg-content">${msg.content}${msg.editedAt ? ' (editado)' : ''}</div>
+        `;
+        }
+
+        function sendMessage() {
+            if (!ws || !activeChannelId) {
+                alert('Selecciona un canal primero');
+                return;
+            }
+            const contentInput = document.getElementById('message-input');
+            const authorInput = document.getElementById('author-id-input');
+            const content = contentInput.value.trim();
+            const authorId = parseInt(authorInput.value);
+
+            if (content && authorId) {
+                ws.send(JSON.stringify({
+                    action: 'SEND_MESSAGE',
+                    data: { authorId, content }
+                }));
+                contentInput.value = '';
+            }
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('messages-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        loadChannels();
+    </script>
+</body>
+
+</html>
